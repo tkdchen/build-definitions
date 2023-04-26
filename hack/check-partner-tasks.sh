@@ -3,16 +3,12 @@
 SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 cd "$SCRIPTDIR/.." || exit 1
 
-if [ ! -e "partners/" ]; then
-    echo "No partners directory exists. Skip checks against partner tasks."
-    exit 0
-fi
-
 check_dir_structure() {
+    partner_dir=$1
     resultf=$(mktemp)
     check_result=$(mktemp)
 
-    find partners/ -mindepth 1 -maxdepth 1 -type d | \
+    find "$partner_dir" -mindepth 1 -maxdepth 1 -type d | \
     while read -r task_dir; do
         owners_file="$task_dir/OWNERS"
         if [ ! -e "$owners_file" ]; then
@@ -63,6 +59,7 @@ check_dir_structure() {
 }
 
 check_privilege_use() {
+    partner_dir=$1
     resultf=$(mktemp)
     check_result=$(mktemp)
 
@@ -70,7 +67,7 @@ check_privilege_use() {
 allowPrivilegeEscalation:true:allowPrivilegeEscalation is not allowed to be true to request more privileges.
 privileged:true:securityContext.privileged is not allowed to be true."
 
-    find partners/*/*/*.yaml | awk -F '/' '{ print $0, $2, $4 }' | \
+    find "$partner_dir"/*/*/*.yaml | awk -F '/' '{ print $0, $2, $4 }' | \
     while read -r task_file task_name yaml_file; do
         if [ "${task_name}.yaml" != "$yaml_file" ]; then
             continue
@@ -104,9 +101,10 @@ privileged:true:securityContext.privileged is not allowed to be true."
 }
 
 check_task_schema() {
+    partner_dir=$1
     resultf=$(mktemp)
     check_result=$(mktemp)
-    find partners/*/*/*.yaml | awk -F '/' '{ print $0, $2, $4 }' | \
+    find "$partner_dir"/*/*/*.yaml | awk -F '/' '{ print $0, $2, $4 }' | \
     while read -r task_file task_name yaml_file; do
         if [ "${task_name}.yaml" != "$yaml_file" ]; then
             continue
@@ -125,41 +123,56 @@ check_task_schema() {
     return 0
 }
 
-exitcode=0
-check_dir_structure_status=Fail
-check_task_schema_status="n/a "
-check_privilege_use_status="n/a "
+main() {
+    partners_dir=$1
+    if [ -z "$partners_dir" ]; then
+        echo "error: no partners directory is specified."
+        exit 1
+    fi
 
-if check_dir_structure; then
-    check_dir_structure_status=Pass
+    if [ ! -e "$partners_dir" ]; then
+        echo "No partners directory exists. Skip checks against partner tasks."
+        exit 1
+    fi
 
-    if ! oc whoami >/dev/null 2>&1; then
-        echo "warning: haven't logged in an OpenShift instance. Task definition can't be validated on server side."
-        check_task_schema_status=Ignored
-    else
-        if check_task_schema; then
-            check_task_schema_status=Pass
+    exitcode=0
+    check_dir_structure_status=Fail
+    check_task_schema_status="n/a "
+    check_privilege_use_status="n/a "
+
+    if check_dir_structure "$partners_dir"; then
+        check_dir_structure_status=Pass
+
+        if ! oc whoami >/dev/null 2>&1; then
+            echo "warning: haven't logged in an OpenShift instance. Task definition can't be validated on server side."
+            check_task_schema_status=Ignored
         else
-            check_task_schema_status=Fail
+            if check_task_schema "$partners_dir"; then
+                check_task_schema_status=Pass
+            else
+                check_task_schema_status=Fail
+                exitcode=$((exitcode+1))
+            fi
+        fi
+
+        if check_privilege_use "$partners_dir"; then
+            check_privilege_use_status=Pass
+        else
+            check_privilege_use_status=Fail
             exitcode=$((exitcode+1))
         fi
-    fi
-
-    if check_privilege_use; then
-        check_privilege_use_status=Pass
     else
-        check_privilege_use_status=Fail
-        exitcode=$((exitcode+1))
+        exitcode=1
     fi
-else
-    exitcode=1
-fi
 
-echo "
+    echo "
 |        Check         | Status  |
 |----------------------|---------|
 | Directory structure  |$(printf " %-8s" "$check_dir_structure_status")|
 | Task YAML definition |$(printf " %-8s" "$check_task_schema_status")|
 | Privilege use        |$(printf " %-8s" "$check_privilege_use_status")|"
 
-exit $exitcode
+    exit $exitcode
+}
+
+main "$@"
