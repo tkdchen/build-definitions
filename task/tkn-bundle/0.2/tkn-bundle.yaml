@@ -251,6 +251,8 @@ spec:
         local -r migration_file=$3
         local -r auth_json=$4
 
+        return 1
+
         pushd "${migration_file%/*}"
         retry oras attach \
           --registry-config "${auth_json}" \
