@@ -152,8 +152,6 @@ spec:
       script: |
         #!/bin/env bash
 
-        echo "my test"
-
         set -o errexit
         set -o pipefail
         set -o nounset
@@ -276,8 +274,6 @@ spec:
             --annotation "${ANNOTATION_IS_MIGRATION}=true" \
             "$task_bundle" "${migration_file##*/}"
           popd
-
-          return 1
 
           local status=$?
           if [[ $status -ne 0 ]]; then
