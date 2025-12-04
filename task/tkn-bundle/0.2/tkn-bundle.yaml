@@ -134,6 +134,7 @@ spec:
     script: |
       #!/bin/env bash
 
+      printf "Test for building nothing from build task.\n"
       exit 0
 
       set -o errexit
